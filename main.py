@@ -3,6 +3,7 @@
 Usage:
     python main.py web-export --url "https://example.com/data-page"
     python main.py web-export --url "https://example.com/data-page" --output "my_data.json"
+    python main.py json-transform --input-dir "./my-data-folder"
 """
 
 import argparse
@@ -72,6 +73,43 @@ def run_web_export(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def run_json_transform(args: argparse.Namespace) -> None:
+    """Run the JSON Schema Transformer agent."""
+    from infrastructure.llm.gemini_provider import GeminiProvider
+    from infrastructure.executor.subprocess_executor import SubprocessExecutor
+    from agents.json_schema_transformer.agent import JsonSchemaTransformerAgent
+    from agents.json_schema_transformer.models import TransformConfig
+
+    # Create provider and executor
+    llm_provider = GeminiProvider()
+    script_executor = SubprocessExecutor()
+
+    # Create agent
+    agent = JsonSchemaTransformerAgent(
+        llm_provider=llm_provider,
+        script_executor=script_executor,
+        workspace_dir=WORKSPACE_DIR,
+    )
+
+    # Create config
+    config = TransformConfig(
+        input_dir=Path(args.input_dir).resolve(),
+    )
+
+    # Run the pipeline
+    try:
+        result = agent.run(config)
+        print(f"\n🎉 Success! Transformed {result.record_count} records.")
+        print(f"📄 Output: {result.json_path}")
+        print(f"📊 Columns: {', '.join(result.columns)}")
+        if result.errors:
+            print(f"⚠️  Warnings: {'; '.join(result.errors)}")
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Transform failed: {e}", exc_info=True)
+        print(f"\n❌ Transform failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -110,6 +148,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output JSON filename (auto-derived from URL if omitted).",
     )
     web_export_parser.set_defaults(func=run_web_export)
+
+    # JSON Schema Transformer agent
+    json_transform_parser = subparsers.add_parser(
+        "json-transform",
+        help="Transform raw JSON data to match a target schema.",
+        description=(
+            "Reads raw-data.json and schema.json from the input directory, "
+            "uses an LLM to analyze the transformation requirements, "
+            "generates a Python script, and produces output.json in the same directory."
+        ),
+    )
+    json_transform_parser.add_argument(
+        "--input-dir",
+        required=True,
+        help="Path to the directory containing raw-data.json and schema.json.",
+    )
+    json_transform_parser.set_defaults(func=run_json_transform)
 
     return parser
 
