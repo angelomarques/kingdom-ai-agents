@@ -1,0 +1,20 @@
+# Environment
+.env
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Workspace (temp files, generated scripts)
+workspace/*
+!workspace/.gitkeep
+
+# Keep output directory but ignore generated files
+output/*
+!output/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
