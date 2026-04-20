@@ -4,6 +4,8 @@ Usage:
     python main.py web-export --url "https://example.com/data-page"
     python main.py web-export --url "https://example.com/data-page" --output "my_data.json"
     python main.py json-transform --input-dir "./my-data-folder"
+    python main.py image-select --input "./slides.json"
+    python main.py image-mask --url "https://example.com/photo.jpg"
 """
 
 import argparse
@@ -110,6 +112,76 @@ def run_json_transform(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def run_image_select(args: argparse.Namespace) -> None:
+    """Run the Image Selector agent."""
+    from agents.image_selector.agent import ImageSelectorAgent
+    from agents.image_selector.models import SelectorConfig
+
+    # Determine output path
+    if args.output:
+        output_path = Path(args.output).resolve()
+    else:
+        output_path = OUTPUT_DIR / "selections.json"
+
+    # Create agent
+    agent = ImageSelectorAgent(
+        workspace_dir=WORKSPACE_DIR,
+        output_dir=OUTPUT_DIR,
+    )
+
+    # Create config
+    config = SelectorConfig(
+        input_path=Path(args.input).resolve(),
+        output_path=output_path,
+    )
+
+    # Run the pipeline
+    try:
+        result = agent.run(config)
+        print(f"\n🎉 Done! Selected {len(result.selections)} images across {result.total_slides} slides.")
+        print(f"📄 Output: {result.output_path}")
+        if result.skipped_slides:
+            print(f"⏭️  Skipped slides: {result.skipped_slides}")
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Image selection failed: {e}", exc_info=True)
+        print(f"\n❌ Image selection failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def run_image_mask(args: argparse.Namespace) -> None:
+    """Run the Image Masker agent (interactive terminal multi-select for strategies)."""
+    from core.ui.terminal_select import TerminalSelectCancelled
+
+    from agents.image_masker.agent import ImageMaskerAgent
+    from agents.image_masker.models import MaskerConfig
+
+    output_path = Path(args.output).resolve() if args.output else None
+
+    agent = ImageMaskerAgent(output_dir=OUTPUT_DIR)
+    config = MaskerConfig(
+        image_url=args.url,
+        output_path=output_path,
+    )
+
+    try:
+        result = agent.run(config)
+    except TerminalSelectCancelled:
+        print("\nCancelled.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Image mask failed: {e}", exc_info=True)
+        print(f"\n❌ Image mask failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\n🎉 Saved masked image.")
+    print(f"📄 Output: {result.output_path}")
+    if result.applied_strategies:
+        names = ", ".join(s.value for s in result.applied_strategies)
+        print(f"🧩 Applied: {names}")
+    else:
+        print("🧩 No strategies selected — saved a PNG copy of the RGB image.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -165,6 +237,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the directory containing raw-data.json and schema.json.",
     )
     json_transform_parser.set_defaults(func=run_json_transform)
+
+    # Image Selector agent
+    image_select_parser = subparsers.add_parser(
+        "image-select",
+        help="Select images from slides via a GUI.",
+        description=(
+            "Presents images in a slide-based GUI. The user selects one image "
+            "per slide (or skips). Outputs a JSON file with the selections."
+        ),
+    )
+    image_select_parser.add_argument(
+        "--input",
+        required=True,
+        help="Path to the input JSON file with slides and images.",
+    )
+    image_select_parser.add_argument(
+        "--output",
+        default=None,
+        help="Output JSON filename (defaults to output/selections.json).",
+    )
+    image_select_parser.set_defaults(func=run_image_select)
+
+    # Image Masker agent
+    image_mask_parser = subparsers.add_parser(
+        "image-mask",
+        help="Apply masking transforms to an image to differentiate it from the original.",
+        description=(
+            "Downloads an image from a URL, presents an interactive terminal \n"
+            "multi-select for choosing masking strategies (flip, color shift, \n"
+            "zoom, rotation, noise, etc.), applies them, and saves the result."
+        ),
+    )
+    image_mask_parser.add_argument(
+        "--url",
+        required=True,
+        help="URL of the source image to mask.",
+    )
+    image_mask_parser.add_argument(
+        "--output",
+        default=None,
+        help="Output image path (auto-derived from URL if omitted).",
+    )
+    image_mask_parser.set_defaults(func=run_image_mask)
 
     return parser
 

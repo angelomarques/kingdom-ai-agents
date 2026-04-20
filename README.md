@@ -8,13 +8,16 @@ A collection of AI-powered automation agents built with clean architecture princ
 kingdom-ai-agents/
 ├── core/                    # Domain layer (abstractions, no external deps)
 │   ├── llm/                 # LLM provider interface
+│   ├── ui/                  # Reusable terminal UI (e.g. raw-mode select)
 │   └── executor/            # Script executor interface
 ├── infrastructure/          # Concrete implementations
 │   ├── llm/                 # Gemini provider (swappable)
 │   └── executor/            # Subprocess executor (swappable)
 ├── agents/                  # Individual agents
 │   ├── web_data_exporter/   # Web page → JSON
-│   └── json_schema_transformer/  # Raw JSON → Schema-mapped JSON
+│   ├── json_schema_transformer/  # Raw JSON → Schema-mapped JSON
+│   ├── image_selector/      # Slide-based image selection GUI
+│   └── image_masker/        # URL image → terminal-picked Pillow transforms → PNG
 ├── workspace/               # Temp files (HTML downloads, generated scripts)
 └── output/                  # Final JSON output files
 ```
@@ -82,6 +85,78 @@ uv run python main.py json-transform --input-dir "./my-data-folder"
 # Verbose mode (debug logging)
 uv run python main.py json-transform -v --input-dir "./my-data-folder"
 ```
+
+### Image Selector
+
+Presents images in a slide-based GUI for manual selection. No LLM required.
+
+**How it works:**
+1. Reads a JSON file containing slides, each with a list of images (URL, description, tags)
+2. Downloads all images from URLs (cached locally in `workspace/image_cache/`)
+3. Launches a tkinter GUI where the user selects one image per slide (or skips)
+4. Saves the selections to a JSON output file
+
+**Input JSON format:**
+```json
+{
+  "slides": [
+    {
+      "title": "Choose a background",
+      "description": "Select the best landscape photo",
+      "images": [
+        {
+          "description": "A sunset over mountains",
+          "tags": ["sunset", "mountains"],
+          "url": "https://example.com/image1.jpg"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Usage:**
+```bash
+# Basic usage (output defaults to output/selections.json)
+uv run python main.py image-select --input "./slides.json"
+
+# With custom output path
+uv run python main.py image-select --input "./slides.json" --output "./my_selections.json"
+
+# Verbose mode
+uv run python main.py image-select -v --input "./slides.json"
+```
+
+### Image Masker
+
+Downloads an image from a URL, lets you pick which masking strategies to apply in an interactive terminal multi-select (arrow keys, Space/Enter to toggle, `d` when done, `q` to cancel), then applies the transforms with Pillow and NumPy and saves a **PNG** (lossless default).
+
+**Strategies (stable apply order follows this list):**
+
+| Strategy | Effect |
+|----------|--------|
+| `horizontal_flip` | Mirror left/right |
+| `vertical_flip` | Mirror top/bottom |
+| `color_shift` | Random hue/saturation shift (HSV) |
+| `zoom_crop` | Slight zoom then center crop to original size |
+| `border_overlay` | Gradient-colored border around the image |
+| `brightness_contrast` | Random subtle brightness and contrast |
+| `slight_rotation` | Small random rotation (about 2–8°), cropped square |
+| `noise_grain` | Subtle Gaussian noise / grain |
+
+**Usage:**
+
+```bash
+# Output path defaults to output/masked_<hash>.png
+uv run python main.py image-mask --url "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png"
+
+# Custom output path
+uv run python main.py image-mask --url "https://example.com/photo.jpg" --output "./masked_photo.png"
+
+uv run python main.py image-mask -v --url "https://example.com/photo.jpg"
+```
+
+For programmatic runs without a TTY, construct `MaskerConfig(..., strategies=[...])` and call `ImageMaskerAgent(...).run(config)` so the terminal picker is skipped.
 
 **Example schema.json:**
 ```json
