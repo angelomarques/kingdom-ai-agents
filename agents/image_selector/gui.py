@@ -19,7 +19,6 @@ _BG_CARD = "#16213e"
 _BG_CARD_HOVER = "#1c2d50"
 _BG_SELECTED = "#0f3460"
 _ACCENT = "#e94560"
-_ACCENT_LIGHT = "#ff6b81"
 _TEXT = "#eaeaea"
 _TEXT_DIM = "#8d99ae"
 _TEXT_TAG = "#a3bffa"
@@ -27,10 +26,6 @@ _BORDER_SELECTED = "#e94560"
 _BORDER_DEFAULT = "#2b3a55"
 _BTN_SKIP_BG = "#2b3a55"
 _BTN_SKIP_FG = "#8d99ae"
-_BTN_CONFIRM_BG = "#e94560"
-_BTN_CONFIRM_FG = "#ffffff"
-_BTN_DISABLED_BG = "#2b3a55"
-_BTN_DISABLED_FG = "#555555"
 _PROGRESS_BG = "#2b3a55"
 _PROGRESS_FILL = "#e94560"
 
@@ -64,6 +59,10 @@ class ImageSelectorGUI:
         self._image_paths = image_paths
         self._current_index = 0
         self._selected_image_index: int | None = None
+
+        # History stack for go-back support: list of (action, slide_index)
+        # action is "select" or "skip"
+        self._history: list[tuple[str, int]] = []
 
         # Results
         self.selections: list[ImageSelection] = []
@@ -170,6 +169,15 @@ class ImageSelectorGUI:
         btn_frame = tk.Frame(self._main_frame, bg=_BG)
         btn_frame.pack(fill=tk.X, pady=(12, 0))
 
+        self._back_btn = tk.Button(
+            btn_frame, text="← Go Back", font=self._font_btn,
+            bg=_BTN_SKIP_BG, fg=_BTN_SKIP_FG,
+            activebackground=_BG_CARD_HOVER, activeforeground=_TEXT,
+            relief="flat", cursor="hand2", padx=24, pady=10,
+            command=self._on_go_back,
+        )
+        self._back_btn.pack(side=tk.LEFT)
+
         self._skip_btn = tk.Button(
             btn_frame, text="Skip →", font=self._font_btn,
             bg=_BTN_SKIP_BG, fg=_BTN_SKIP_FG,
@@ -177,17 +185,7 @@ class ImageSelectorGUI:
             relief="flat", cursor="hand2", padx=24, pady=10,
             command=self._on_skip,
         )
-        self._skip_btn.pack(side=tk.LEFT)
-
-        self._confirm_btn = tk.Button(
-            btn_frame, text="✓ Confirm Selection", font=self._font_btn,
-            bg=_BTN_DISABLED_BG, fg=_BTN_DISABLED_FG,
-            activebackground=_ACCENT_LIGHT, activeforeground=_BTN_CONFIRM_FG,
-            relief="flat", cursor="hand2", padx=24, pady=10,
-            state=tk.DISABLED,
-            command=self._on_confirm,
-        )
-        self._confirm_btn.pack(side=tk.RIGHT)
+        self._skip_btn.pack(side=tk.RIGHT)
 
     # ──────────────────────────────────────────
     # Slide rendering
@@ -213,10 +211,11 @@ class ImageSelectorGUI:
         # Update progress bar
         self._draw_progress_bar(current, total)
 
-        # Disable confirm button
-        self._confirm_btn.config(
-            state=tk.DISABLED, bg=_BTN_DISABLED_BG, fg=_BTN_DISABLED_FG
-        )
+        # Show/hide the back button depending on whether we can go back
+        if self._current_index == 0:
+            self._back_btn.pack_forget()
+        else:
+            self._back_btn.pack(side=tk.LEFT)
 
         # Clear the grid
         for widget in self._grid_frame.winfo_children():
@@ -344,21 +343,8 @@ class ImageSelectorGUI:
     # ──────────────────────────────────────────
 
     def _on_image_click(self, idx: int) -> None:
-        """Handle clicking on an image card."""
-        # Deselect previous
-        if self._selected_image_index is not None:
-            prev_card = self._image_cards[self._selected_image_index]
-            prev_card.configure(
-                highlightbackground=_BORDER_DEFAULT, bg=_BG_CARD
-            )
-            for child in prev_card.winfo_children():
-                try:
-                    child.configure(bg=_BG_CARD)
-                except tk.TclError:
-                    pass
-
-        # Select new
-        self._selected_image_index = idx
+        """Handle clicking on an image card — immediately selects and advances."""
+        # Briefly highlight the selected card for visual feedback
         card = self._image_cards[idx]
         card.configure(highlightbackground=_BORDER_SELECTED, bg=_BG_SELECTED)
         for child in card.winfo_children():
@@ -367,25 +353,9 @@ class ImageSelectorGUI:
             except tk.TclError:
                 pass
 
-        # Enable confirm button
-        self._confirm_btn.config(
-            state=tk.NORMAL, bg=_BTN_CONFIRM_BG, fg=_BTN_CONFIRM_FG
-        )
-
-    def _on_skip(self) -> None:
-        """Skip the current slide."""
-        logger.info(f"   Skipped slide {self._current_index + 1}")
-        self.skipped_slides.append(self._current_index)
-        self._current_index += 1
-        self._render_slide()
-
-    def _on_confirm(self) -> None:
-        """Confirm the current selection and advance."""
-        if self._selected_image_index is None:
-            return
-
+        # Record the selection
         slide = self._slides[self._current_index]
-        selected_image = slide.images[self._selected_image_index]
+        selected_image = slide.images[idx]
 
         selection = ImageSelection(
             slide_index=self._current_index,
@@ -393,12 +363,47 @@ class ImageSelectorGUI:
             selected_image=selected_image,
         )
         self.selections.append(selection)
+        # Track the action so _on_go_back knows what to undo
+        self._history.append(("select", self._current_index))
         logger.info(
-            f"   Selected image {self._selected_image_index + 1} "
+            f"   Selected image {idx + 1} "
             f"on slide {self._current_index + 1}: {selected_image.description}"
         )
 
         self._current_index += 1
+        # Small delay so the user sees the highlight before moving on
+        self._root.after(150, self._render_slide)
+
+    def _on_skip(self) -> None:
+        """Skip the current slide."""
+        logger.info(f"   Skipped slide {self._current_index + 1}")
+        self.skipped_slides.append(self._current_index)
+        self._history.append(("skip", self._current_index))
+        self._current_index += 1
+        self._render_slide()
+
+    def _on_go_back(self) -> None:
+        """Go back to the previous slide and undo the last action."""
+        if not self._history:
+            return
+
+        action, slide_idx = self._history.pop()
+
+        if action == "select":
+            # Remove the last selection
+            if self.selections and self.selections[-1].slide_index == slide_idx:
+                removed = self.selections.pop()
+                logger.info(
+                    f"   Undid selection on slide {slide_idx + 1}: "
+                    f"{removed.selected_image.description}"
+                )
+        elif action == "skip":
+            # Remove from skipped list
+            if slide_idx in self.skipped_slides:
+                self.skipped_slides.remove(slide_idx)
+                logger.info(f"   Undid skip on slide {slide_idx + 1}")
+
+        self._current_index = slide_idx
         self._render_slide()
 
     def _on_close(self) -> None:
