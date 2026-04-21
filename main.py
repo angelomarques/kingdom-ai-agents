@@ -6,6 +6,7 @@ Usage:
     python main.py json-transform --input-dir "./my-data-folder"
     python main.py image-select --input "./slides.json"
     python main.py image-mask --url "https://example.com/photo.jpg"
+    python main.py reference-research --theme "top coldest countries"
 """
 
 import argparse
@@ -148,6 +149,52 @@ def run_image_select(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def run_reference_research(args: argparse.Namespace) -> None:
+    """Run the Reference Research agent (Tavily search + LLM curation)."""
+    from core.research.base import ResearchProviderError
+
+    from agents.reference_research.agent import ReferenceResearchAgent
+    from agents.reference_research.models import ReferenceResearchConfig
+    from infrastructure.llm.gemini_provider import GeminiProvider
+    from infrastructure.research.tavily_research import TavilyResearchProvider
+
+    output_path = Path(args.output).resolve() if args.output else None
+
+    try:
+        llm = GeminiProvider()
+        research = TavilyResearchProvider(llm_provider=llm)
+    except (ResearchProviderError, Exception) as e:
+        logging.getLogger(__name__).error(str(e))
+        print(f"\n❌ {e}", file=sys.stderr)
+        sys.exit(1)
+
+    agent = ReferenceResearchAgent(
+        research_provider=research,
+        output_dir=OUTPUT_DIR,
+    )
+    config = ReferenceResearchConfig(
+        theme=args.theme,
+        output_path=output_path,
+    )
+
+    try:
+        result = agent.run(config)
+    except ResearchProviderError as e:
+        logging.getLogger(__name__).error(f"Reference research failed: {e}", exc_info=True)
+        print(f"\n❌ Reference research failed: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Reference research failed: {e}", exc_info=True)
+        print(f"\n❌ Reference research failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\n🎉 Found {len(result.sources)} reference URLs.")
+    print(f"📄 Output: {result.json_path}")
+    for i, s in enumerate(result.sources, start=1):
+        print(f"  {i}. {s.title}")
+        print(f"     {s.url}")
+
+
 def run_image_mask(args: argparse.Namespace) -> None:
     """Run the Image Masker agent (interactive terminal multi-select for strategies)."""
     from core.ui.terminal_select import TerminalSelectCancelled
@@ -280,6 +327,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output image path (auto-derived from URL if omitted).",
     )
     image_mask_parser.set_defaults(func=run_image_mask)
+
+    # Reference Research agent
+    reference_research_parser = subparsers.add_parser(
+        "reference-research",
+        help="Find five URLs with list/table/data-style facts for a theme.",
+        description=(
+            "Uses Tavily Search API to find candidate pages, then curates the top five "
+            "https pages suitable for fact-heavy content (rankings, comparisons, tables, "
+            "bullet lists) via an LLM. Writes a JSON file under output/ unless --output is set."
+        ),
+    )
+    reference_research_parser.add_argument(
+        "--theme",
+        required=True,
+        help="Topic or angle to research (e.g. 'top coldest countries').",
+    )
+    reference_research_parser.add_argument(
+        "--output",
+        default=None,
+        help="Output JSON path (default: output/<slug-from-theme>.json).",
+    )
+    reference_research_parser.set_defaults(func=run_reference_research)
 
     return parser
 

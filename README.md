@@ -8,14 +8,17 @@ A collection of AI-powered automation agents built with clean architecture princ
 kingdom-ai-agents/
 ├── core/                    # Domain layer (abstractions, no external deps)
 │   ├── llm/                 # LLM provider interface
+│   ├── research/            # Web research port (URL discovery)
 │   ├── ui/                  # Reusable terminal UI (e.g. raw-mode select)
 │   └── executor/            # Script executor interface
 ├── infrastructure/          # Concrete implementations
 │   ├── llm/                 # Gemini provider (swappable)
+│   ├── research/            # Tavily Search + LLM curation
 │   └── executor/            # Subprocess executor (swappable)
 ├── agents/                  # Individual agents
 │   ├── web_data_exporter/   # Web page → JSON
 │   ├── json_schema_transformer/  # Raw JSON → Schema-mapped JSON
+│   ├── reference_research/  # Theme → five grounded reference URLs (JSON)
 │   ├── image_selector/      # Slide-based image selection GUI
 │   └── image_masker/        # URL image → terminal-picked Pillow transforms → PNG
 ├── workspace/               # Temp files (HTML downloads, generated scripts)
@@ -32,7 +35,7 @@ kingdom-ai-agents/
 2. **Configure API key**:
    ```bash
    cp .env.example .env
-   # Edit .env and set your GEMINI_API_KEY
+   # Edit .env and set your GEMINI_API_KEY and TAVILY_API_KEY
    ```
 
 ## Agents
@@ -58,6 +61,30 @@ uv run python main.py web-export --url "https://en.wikipedia.org/wiki/List_of_ca
 
 # Verbose mode (debug logging)
 uv run python main.py web-export -v --url "https://example.com/data-page"
+```
+
+### Reference Research
+
+Finds five **https** pages you can use as primary references for fact-heavy content (ranked lists, comparisons, tables, bullet-point data). Uses the **[Tavily Search API](https://tavily.com)** to discover candidate pages and a **Gemini LLM** to curate the best five results with structured metadata.
+
+**How it works:**
+1. Sends the theme to Tavily Search API (advanced depth, up to 10 results)
+2. If fewer than 5 results are found, retries with a broader query (synonyms, related terms)
+3. Passes all search results to an LLM to curate the best 5 pages
+4. The LLM picks 5 URLs from the search results and fills in `content_shape` and `rationale`
+5. Validates five distinct **https** URLs and checks each curated URL appears in the Tavily results
+6. Writes `theme` + `sources` to a JSON file under `output/` (or `--output`)
+
+**Notes:** Requires both `TAVILY_API_KEY` and `GEMINI_API_KEY` environment variables. Tavily usage follows its API billing policies.
+
+**Usage:**
+```bash
+uv run python main.py reference-research --theme "top coldest countries"
+
+# Custom output path
+uv run python main.py reference-research --theme "curious facts about the sea" --output ./output/sea_facts_refs.json
+
+uv run python main.py reference-research -v --theme "tallest buildings in europe"
 ```
 
 ### JSON Schema Transformer
