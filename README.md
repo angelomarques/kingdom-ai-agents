@@ -9,18 +9,21 @@ kingdom-ai-agents/
 ├── core/                    # Domain layer (abstractions, no external deps)
 │   ├── llm/                 # LLM provider interface
 │   ├── research/            # Web research port (URL discovery)
+│   ├── stock_image/         # Stock image provider interface
 │   ├── ui/                  # Reusable terminal UI (e.g. raw-mode select)
 │   └── executor/            # Script executor interface
 ├── infrastructure/          # Concrete implementations
 │   ├── llm/                 # Gemini provider (swappable)
 │   ├── research/            # Tavily Search + LLM curation
+│   ├── stock_image/         # Pixabay & Pexels API clients
 │   └── executor/            # Subprocess executor (swappable)
 ├── agents/                  # Individual agents
 │   ├── web_data_exporter/   # Web page → JSON
 │   ├── json_schema_transformer/  # Raw JSON → Schema-mapped JSON
 │   ├── reference_research/  # Theme → five grounded reference URLs (JSON)
 │   ├── image_selector/      # Slide-based image selection GUI
-│   └── image_masker/        # URL image → terminal-picked Pillow transforms → PNG
+│   ├── image_masker/        # URL image → terminal-picked Pillow transforms → PNG
+│   └── stock_image_search/  # Theme+slides → LLM keywords → Pixabay/Pexels image search
 ├── workspace/               # Temp files (HTML downloads, generated scripts)
 └── output/                  # Final JSON output files
 ```
@@ -35,7 +38,7 @@ kingdom-ai-agents/
 2. **Configure API key**:
    ```bash
    cp .env.example .env
-   # Edit .env and set your GEMINI_API_KEY and TAVILY_API_KEY
+   # Edit .env and set your GEMINI_API_KEY, TAVILY_API_KEY, PIXABAY_API_KEY, and PEXELS_API_KEY
    ```
 
 ## Agents
@@ -184,6 +187,39 @@ uv run python main.py image-mask -v --url "https://example.com/photo.jpg"
 ```
 
 For programmatic runs without a TTY, construct `MaskerConfig(..., strategies=[...])` and call `ImageMaskerAgent(...).run(config)` so the terminal picker is skipped.
+
+### Stock Image Search
+
+Searches for stock images on **Pixabay** and **Pexels** for each slide topic in a video. Uses a **Gemini LLM** to generate optimal search keywords from the theme + topic context.
+
+**How it works:**
+1. Reads a JSON input file containing the video theme and an array of slide topics
+2. For each slide, sends the theme + topic to Gemini to generate 3–5 stock-photo-optimized keywords
+3. Searches Pixabay API (top 5 results) and Pexels API (top 5 results) using those keywords
+4. Writes a JSON output with 10 images per slide (5 Pixabay + 5 Pexels), including URLs, dimensions, tags, and photographer info
+
+**Input JSON format:**
+```json
+{
+  "theme": "Top 10 Coldest Countries in the World",
+  "slides": [
+    { "topic": "Antarctica — Coldest continent on Earth" },
+    { "topic": "Russia — Oymyakon, the coldest inhabited place" }
+  ]
+}
+```
+
+**Notes:** Requires `GEMINI_API_KEY`, `PIXABAY_API_KEY`, and `PEXELS_API_KEY` environment variables.
+
+**Usage:**
+```bash
+uv run python main.py stock-image-search --input "./input/slides.json"
+
+# Custom output path
+uv run python main.py stock-image-search --input "./input/slides.json" --output ./output/my_images.json
+
+uv run python main.py stock-image-search -v --input "./input/slides.json"
+```
 
 **Example schema.json:**
 ```json

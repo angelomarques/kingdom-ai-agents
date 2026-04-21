@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kingdom-ai-agents/stock-image-search-input.schema.json",
+  "title": "Stock image search agent input",
+  "description": "Input JSON for StockImageSearchConfig.from_json (theme + slides with topic). Unknown properties are ignored at runtime.",
+  "type": "object",
+  "required": ["theme", "slides"],
+  "properties": {
+    "theme": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Presentation or video theme used for LLM keyword context."
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry per slide; each must include topic for the slide to be used.",
+      "items": {
+        "type": "object",
+        "required": ["topic"],
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "Slide subject line passed to the keyword prompt."
+          }
+        }
+      }
+    }
+  }
+}

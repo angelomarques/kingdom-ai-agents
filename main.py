@@ -7,6 +7,7 @@ Usage:
     python main.py image-select --input "./slides.json"
     python main.py image-mask --url "https://example.com/photo.jpg"
     python main.py reference-research --theme "top coldest countries"
+    python main.py stock-image-search --input "./slides_input.json"
 """
 
 import argparse
@@ -229,6 +230,57 @@ def run_image_mask(args: argparse.Namespace) -> None:
         print("🧩 No strategies selected — saved a PNG copy of the RGB image.")
 
 
+def run_stock_image_search(args: argparse.Namespace) -> None:
+    """Run the Stock Image Search agent."""
+    from core.stock_image.base import StockImageProviderError
+
+    from agents.stock_image_search.agent import StockImageSearchAgent
+    from agents.stock_image_search.models import StockImageSearchConfig
+    from infrastructure.llm.gemini_provider import GeminiProvider
+    from infrastructure.stock_image.pixabay_provider import PixabayProvider
+    from infrastructure.stock_image.pexels_provider import PexelsProvider
+
+    output_path = Path(args.output).resolve() if args.output else None
+
+    try:
+        llm = GeminiProvider()
+        pixabay = PixabayProvider()
+        pexels = PexelsProvider()
+    except (StockImageProviderError, Exception) as e:
+        logging.getLogger(__name__).error(str(e))
+        print(f"\n❌ {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Parse input JSON
+    try:
+        config = StockImageSearchConfig.from_json(
+            path=Path(args.input),
+            output_path=output_path,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        print(f"\n❌ Invalid input: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    agent = StockImageSearchAgent(
+        llm_provider=llm,
+        pixabay_provider=pixabay,
+        pexels_provider=pexels,
+        output_dir=OUTPUT_DIR,
+    )
+
+    try:
+        result = agent.run(config)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Stock image search failed: {e}", exc_info=True)
+        print(f"\n❌ Stock image search failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\n🎉 Found images for {result.total_slides} slides.")
+    print(f"📄 Output: {result.json_path}")
+    for i, count in enumerate(result.images_per_slide):
+        print(f"  Slide {i + 1}: {count} images")
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -349,6 +401,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output JSON path (default: output/<slug-from-theme>.json).",
     )
     reference_research_parser.set_defaults(func=run_reference_research)
+
+    # Stock Image Search agent
+    stock_image_parser = subparsers.add_parser(
+        "stock-image-search",
+        help="Search stock images (Pixabay + Pexels) for video slide topics.",
+        description=(
+            "Reads a JSON file with a video theme and slide topics, uses an LLM to \n"
+            "generate search keywords for each topic, then queries Pixabay and Pexels \n"
+            "APIs to find the top 5 images from each provider per slide. Outputs a JSON \n"
+            "file with all results."
+        ),
+    )
+    stock_image_parser.add_argument(
+        "--input",
+        required=True,
+        help='Path to input JSON file with "theme" and "slides" array.',
+    )
+    stock_image_parser.add_argument(
+        "--output",
+        default=None,
+        help="Output JSON path (default: output/<slug-from-theme>_images.json).",
+    )
+    stock_image_parser.set_defaults(func=run_stock_image_search)
 
     return parser
 
