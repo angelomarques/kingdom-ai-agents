@@ -2,6 +2,7 @@
 
 Usage:
     python main.py web-export --url "https://example.com/data-page"
+    python main.py web-export --html "./input/page.html"
     python main.py web-export --url "https://example.com/data-page" --output "my_data.json"
     python main.py json-transform --input-dir "./my-data-folder"
     python main.py image-select --input "./slides.json"
@@ -60,6 +61,7 @@ def run_web_export(args: argparse.Namespace) -> None:
     # Create config
     config = ExportConfig(
         url=args.url,
+        local_html_path=Path(args.local_html).resolve() if args.local_html else None,
         output_filename=args.output,
     )
 
@@ -304,19 +306,27 @@ def build_parser() -> argparse.ArgumentParser:
         "web-export",
         help="Export structured data from a web page to JSON.",
         description=(
-            "Downloads a web page, analyzes its structure using an LLM, "
+            "Loads HTML from a URL or a local file, analyzes its structure using an LLM, "
             "generates an extraction script, and exports the data to JSON."
         ),
     )
-    web_export_parser.add_argument(
+    web_export_source = web_export_parser.add_mutually_exclusive_group(required=True)
+    web_export_source.add_argument(
         "--url",
-        required=True,
+        default=None,
         help="URL of the web page to export data from.",
+    )
+    web_export_source.add_argument(
+        "--html",
+        metavar="PATH",
+        dest="local_html",
+        default=None,
+        help="Path to a local HTML file to export data from.",
     )
     web_export_parser.add_argument(
         "--output",
         default=None,
-        help="Output JSON filename (auto-derived from URL if omitted).",
+        help="Output JSON filename (auto-derived from URL or HTML filename if omitted).",
     )
     web_export_parser.set_defaults(func=run_web_export)
 

@@ -8,7 +8,11 @@ from core.executor.base import ScriptExecutor, ScriptExecutionError
 from core.llm.base import LLMProvider, LLMProviderError
 from core.llm.models import LLMRequest
 
-from agents.web_data_exporter.html_downloader import download_html, HTMLDownloadError
+from agents.web_data_exporter.html_downloader import (
+    copy_local_html_to_workspace,
+    download_html,
+    HTMLDownloadError,
+)
 from agents.web_data_exporter.models import (
     AnalysisResult,
     DataLayout,
@@ -64,7 +68,7 @@ class WebDataExporterAgent:
         """Run the full export pipeline.
 
         Args:
-            config: Export configuration (URL, output filename).
+            config: Export configuration (URL or local HTML path, output filename).
 
         Returns:
             ExportResult with the path to the JSON file and metadata.
@@ -74,14 +78,14 @@ class WebDataExporterAgent:
         """
         logger.info(f"{'=' * 60}")
         logger.info(f"Web Data Exporter Agent")
-        logger.info(f"URL: {config.url}")
+        logger.info(f"Source: {config.source_descriptor()}")
         logger.info(f"{'=' * 60}")
 
-        # Step 1: Download HTML
-        logger.info("\n📥 Step 1: Downloading HTML...")
-        html_path = self._download_html(config.url)
+        # Step 1: Obtain HTML (download or local copy)
+        logger.info("\n📥 Step 1: Obtaining HTML...")
+        html_path = self._obtain_html(config)
         html_content = html_path.read_text(encoding="utf-8")
-        logger.info(f"   Downloaded {len(html_content):,} characters")
+        logger.info(f"   Loaded {len(html_content):,} characters")
 
         # Step 2: Analyze HTML structure
         logger.info("\n🔍 Step 2: Analyzing HTML structure...")
@@ -104,7 +108,9 @@ class WebDataExporterAgent:
 
         # Step 5: Validate and return result
         logger.info("\n✅ Step 5: Validating output...")
-        export_result = self._validate_output(json_output_path, config.url, analysis)
+        export_result = self._validate_output(
+            json_output_path, config.source_descriptor(), analysis
+        )
         logger.info(f"   Records exported: {export_result.record_count}")
         logger.info(f"   Output file: {export_result.json_path}")
         logger.info(f"\n{'=' * 60}")
@@ -113,12 +119,17 @@ class WebDataExporterAgent:
 
         return export_result
 
-    def _download_html(self, url: str) -> Path:
-        """Step 1: Download the HTML page."""
+    def _obtain_html(self, config: ExportConfig) -> Path:
+        """Step 1: Download remote HTML or copy a local file into the workspace."""
         try:
-            return download_html(url, self._workspace_dir)
+            if config.local_html_path is not None:
+                return copy_local_html_to_workspace(
+                    Path(config.local_html_path), self._workspace_dir
+                )
+            assert config.url is not None
+            return download_html(config.url, self._workspace_dir)
         except HTMLDownloadError as e:
-            logger.error(f"Failed to download HTML: {e}")
+            logger.error(f"Failed to obtain HTML: {e}")
             raise
 
     def _analyze_html(self, html_content: str) -> AnalysisResult:

@@ -2,6 +2,7 @@
 
 import logging
 import re
+import shutil
 from pathlib import Path
 
 import httpx
@@ -73,6 +74,35 @@ def download_html(url: str, output_dir: Path, timeout: int = 30) -> Path:
     )
 
     return output_path
+
+
+def copy_local_html_to_workspace(source_path: Path, output_dir: Path) -> Path:
+    """Copy a local HTML file into the workspace for the same pipeline as downloads.
+
+    Args:
+        source_path: Path to an existing HTML file on disk.
+        output_dir: Directory to place the copy (typically the agent workspace).
+
+    Returns:
+        Path to the copied file inside output_dir.
+
+    Raises:
+        HTMLDownloadError: If the path is missing, not a file, or copy fails.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    resolved = source_path.expanduser().resolve()
+    if not resolved.is_file():
+        raise HTMLDownloadError(f"Not a file or does not exist: {resolved}")
+
+    dest = output_dir / resolved.name
+    logger.info(f"Staging local HTML: {resolved} -> {dest}")
+
+    try:
+        shutil.copy2(resolved, dest)
+    except OSError as e:
+        raise HTMLDownloadError(f"Failed to copy HTML from {resolved}: {e}") from e
+
+    return dest
 
 
 def _url_to_filename(url: str) -> str:
