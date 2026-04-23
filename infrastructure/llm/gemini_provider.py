@@ -31,7 +31,7 @@ class GeminiProvider(LLMProvider):
                 "or pass api_key to GeminiProvider."
             )
 
-        self._client = genai.Client(api_key=resolved_key)
+        self._client = genai.Client(api_key=resolved_key, vertexai=True)
         self._model = model or self.DEFAULT_MODEL
 
     @property

@@ -122,7 +122,7 @@ class GeminiGoogleSearchResearchProvider(WebResearchProvider):
             raise ResearchProviderError(
                 "Gemini API key not found. Set GEMINI_API_KEY or pass api_key."
             )
-        self._client = genai.Client(api_key=resolved_key)
+        self._client = genai.Client(api_key=resolved_key, vertexai=True)
         self._default_model = default_model or _DEFAULT_MODEL
 
     def find_sources(self, request: ResearchRequest) -> ResearchResult:
