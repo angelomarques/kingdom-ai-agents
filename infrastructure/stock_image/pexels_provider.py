@@ -78,13 +78,27 @@ class PexelsProvider(StockImageProvider):
         results: list[StockImage] = []
         for photo in photos:
             src = photo.get("src", {})
+            # Prefer large2x for image_url (stable large tier; matches refresh script).
+            image_url = (
+                src.get("large2x")
+                or src.get("large")
+                or src.get("original")
+                or src.get("medium")
+                or ""
+            )
+            preview_url = (
+                src.get("medium")
+                or src.get("small")
+                or src.get("tiny")
+                or image_url
+            )
             results.append(
                 StockImage(
                     id=str(photo["id"]),
                     source="pexels",
                     page_url=photo.get("url", ""),
-                    image_url=src.get("large", ""),
-                    preview_url=src.get("medium", ""),
+                    image_url=image_url,
+                    preview_url=preview_url,
                     width=photo.get("width", 0),
                     height=photo.get("height", 0),
                     tags=photo.get("alt", ""),

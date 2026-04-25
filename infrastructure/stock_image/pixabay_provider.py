@@ -77,15 +77,26 @@ class PixabayProvider(StockImageProvider):
 
         results: list[StockImage] = []
         for hit in hits:
+            # Prefer largeImageURL for image_url (matches refresh script; larger than webformat).
+            image_url = (
+                hit.get("largeImageURL")
+                or hit.get("fullHDURL")
+                or hit.get("imageURL")
+                or hit.get("webformatURL")
+                or ""
+            )
+            preview_url = hit.get("previewURL") or image_url
+            width = hit.get("imageWidth") or hit.get("webformatWidth", 0)
+            height = hit.get("imageHeight") or hit.get("webformatHeight", 0)
             results.append(
                 StockImage(
                     id=str(hit["id"]),
                     source="pixabay",
                     page_url=hit.get("pageURL", ""),
-                    image_url=hit.get("webformatURL", ""),
-                    preview_url=hit.get("previewURL", ""),
-                    width=hit.get("webformatWidth", 0),
-                    height=hit.get("webformatHeight", 0),
+                    image_url=image_url,
+                    preview_url=preview_url,
+                    width=width,
+                    height=height,
                     tags=hit.get("tags", ""),
                     photographer=hit.get("user", ""),
                 )
