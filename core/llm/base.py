@@ -1,6 +1,7 @@
 """Abstract base class for LLM providers."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from core.llm.models import LLMRequest, LLMResponse
 
@@ -24,6 +25,24 @@ class LLMProvider(ABC):
 
         Raises:
             LLMProviderError: If the provider fails to generate a response.
+        """
+        ...
+
+    @abstractmethod
+    def generate_batch(self, requests: Sequence[LLMRequest]) -> list[LLMResponse]:
+        """Run multiple LLM requests as a single batch job.
+
+        Implementations should preserve order: the i-th response corresponds
+        to the i-th request. An empty ``requests`` sequence must yield an empty list.
+
+        Args:
+            requests: Prompts and options for each item in the batch.
+
+        Returns:
+            One ``LLMResponse`` per input request, in the same order.
+
+        Raises:
+            LLMProviderError: If the batch job fails or any item has no usable text.
         """
         ...
 
