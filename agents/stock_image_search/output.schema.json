@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kingdom-ai-agents/stock-image-search-output.schema.json",
+  "title": "Stock image search agent output",
+  "description": "Same structure as stock-image-search input (theme + slides with title, content_text, image_url). Each slide adds an images array of stock search hits (Pixabay/Pexels normalized fields).",
+  "type": "object",
+  "required": ["theme", "slides"],
+  "properties": {
+    "theme": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Presentation or video theme from the input."
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Slides from the input, each extended with search results.",
+      "items": {
+        "type": "object",
+        "required": ["title", "content_text", "image_url", "images"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Slide headline (echoed from input)."
+          },
+          "content_text": {
+            "type": "string",
+            "description": "Slide body copy (echoed from input)."
+          },
+          "image_url": {
+            "type": "string",
+            "description": "Existing image URL from input; unchanged by the agent."
+          },
+          "images": {
+            "type": "array",
+            "description": "Stock images found for this slide (merged provider results).",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "source",
+                "page_url",
+                "image_url",
+                "preview_url",
+                "width",
+                "height",
+                "tags",
+                "photographer"
+              ],
+              "properties": {
+                "id": { "type": "string" },
+                "source": {
+                  "type": "string",
+                  "enum": ["pixabay", "pexels"]
+                },
+                "page_url": { "type": "string" },
+                "image_url": { "type": "string" },
+                "preview_url": { "type": "string" },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" },
+                "tags": { "type": "string" },
+                "photographer": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

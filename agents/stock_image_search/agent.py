@@ -63,8 +63,8 @@ class StockImageSearchAgent:
         # Step 2: Search both providers for each keyword set
         slide_results = self._search_all_slides(slide_keywords, config)
 
-        # Step 3: Build and write output JSON
-        json_path = self._write_output(config, slide_keywords, slide_results)
+        # Step 3: Build and write output JSON (same shape as input + images per slide)
+        json_path = self._write_output(config, slide_results)
 
         images_per_slide = [len(images) for images in slide_results]
 
@@ -88,11 +88,13 @@ class StockImageSearchAgent:
         for i, slide in enumerate(config.slides):
             logger.info(
                 "[%d/%d] Generating keywords for: %s",
-                i + 1, len(config.slides), slide.topic,
+                i + 1, len(config.slides), slide.title,
             )
 
             request = LLMRequest(
-                prompt=build_keyword_prompt(config.theme, slide.topic),
+                prompt=build_keyword_prompt(
+                    config.theme, slide.title, slide.content_text
+                ),
                 system_instruction=SYSTEM_INSTRUCTION,
                 temperature=0.7,
             )
@@ -122,10 +124,10 @@ class StockImageSearchAgent:
         all_results: list[list[StockImage]] = []
 
         for i, keywords in enumerate(slide_keywords):
-            topic = config.slides[i].topic
+            title = config.slides[i].title
             logger.info(
                 "[%d/%d] Searching images for: %s",
-                i + 1, len(slide_keywords), topic,
+                i + 1, len(slide_keywords), title,
             )
 
             slide_images: list[StockImage] = []
@@ -157,10 +159,13 @@ class StockImageSearchAgent:
     def _write_output(
         self,
         config: StockImageSearchConfig,
-        slide_keywords: list[str],
         slide_results: list[list[StockImage]],
     ) -> Path:
         """Build the output JSON and write it to disk.
+
+        Shape matches the agent input schema (theme + slides with title,
+        content_text, image_url), with each slide extended by an ``images``
+        array of normalized stock photo results.
 
         Returns:
             Path to the written JSON file.
@@ -168,8 +173,9 @@ class StockImageSearchAgent:
         slides_output = []
         for i, slide in enumerate(config.slides):
             slides_output.append({
-                "topic": slide.topic,
-                "keywords": slide_keywords[i],
+                "title": slide.title,
+                "content_text": slide.content_text,
+                "image_url": slide.image_url,
                 "images": [img.to_dict() for img in slide_results[i]],
             })
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kingdom-ai-agents/stock-image-search-input.schema.json",
   "title": "Stock image search agent input",
-  "description": "Input JSON for StockImageSearchConfig.from_json (theme + slides with topic). Unknown properties are ignored at runtime.",
+  "description": "Input JSON for StockImageSearchConfig.from_json (theme + slides). Slide objects match slide records with title, content_text, image_url (e.g. tallest-buildings output items). Agent output mirrors this shape with each slide extended by an images array of stock hits; see output.schema.json. Unknown properties are ignored at runtime.",
   "type": "object",
   "required": ["theme", "slides"],
   "properties": {
@@ -14,14 +14,22 @@
     "slides": {
       "type": "array",
       "minItems": 1,
-      "description": "One entry per slide; each must include topic for the slide to be used.",
+      "description": "One entry per slide; same shape as a slide object in pipeline output (title, content_text, image_url).",
       "items": {
         "type": "object",
-        "required": ["topic"],
+        "required": ["title", "content_text", "image_url"],
         "properties": {
-          "topic": {
+          "title": {
             "type": "string",
-            "description": "Slide subject line passed to the keyword prompt."
+            "description": "Slide headline (e.g. building name and rank)."
+          },
+          "content_text": {
+            "type": "string",
+            "description": "Slide body copy (location, facts, etc.)."
+          },
+          "image_url": {
+            "type": "string",
+            "description": "Existing image URL if any; often empty before search."
           }
         }
       }

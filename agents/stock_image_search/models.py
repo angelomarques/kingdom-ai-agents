@@ -10,9 +10,11 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class SlideInput:
-    """A single slide/topic from the input."""
+    """A single slide from the input (matches pipeline slide JSON objects)."""
 
-    topic: str
+    title: str
+    content_text: str
+    image_url: str
 
 
 @dataclass(frozen=True)
@@ -32,8 +34,11 @@ class StockImageSearchConfig:
         {
             "theme": "Top 10 Coldest Countries",
             "slides": [
-                {"topic": "Antarctica — Coldest continent"},
-                {"topic": "Russia — Oymyakon"}
+                {
+                    "title": "Antarctica",
+                    "content_text": "Coldest continent on Earth",
+                    "image_url": ""
+                }
             ]
         }
         """
@@ -51,14 +56,26 @@ class StockImageSearchConfig:
         if not raw_slides:
             raise ValueError("Input JSON must contain a non-empty 'slides' array.")
 
-        slides = tuple(
-            SlideInput(topic=s["topic"])
-            for s in raw_slides
-            if "topic" in s
-        )
+        slides_list: list[SlideInput] = []
+        for idx, s in enumerate(raw_slides):
+            if not isinstance(s, dict):
+                raise ValueError(f"slides[{idx}] must be an object.")
+            missing = [
+                k for k in ("title", "content_text", "image_url") if k not in s
+            ]
+            if missing:
+                raise ValueError(
+                    f"slides[{idx}] missing required field(s): {', '.join(missing)}"
+                )
+            slides_list.append(
+                SlideInput(
+                    title=str(s["title"]),
+                    content_text=str(s["content_text"]),
+                    image_url=str(s["image_url"]),
+                )
+            )
 
-        if not slides:
-            raise ValueError("No valid slides found. Each slide must have a 'topic' field.")
+        slides = tuple(slides_list)
 
         return cls(
             theme=theme,
