@@ -118,22 +118,53 @@ class ImageSelectorAgent:
         slides: list[Slide] = []
         for slide_data in slides_data:
             images = [
-                ImageItem(
-                    description=img.get("description", ""),
-                    tags=img.get("tags", []),
-                    url=img.get("url", ""),
-                )
+                self._parse_image_item(img)
                 for img in slide_data.get("images", [])
             ]
             slides.append(
                 Slide(
                     title=slide_data.get("title", "Untitled Slide"),
-                    description=slide_data.get("description", ""),
+                    description=slide_data.get("content_text")
+                    or slide_data.get("description", ""),
                     images=images,
                 )
             )
 
         return slides
+
+    @staticmethod
+    def _parse_image_item(img: dict) -> ImageItem:
+        """Parse a stock search hit or legacy image option into an ImageItem."""
+        if "image_url" in img:
+            tags_raw = img.get("tags", "")
+            if isinstance(tags_raw, str):
+                tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+            else:
+                tags = list(tags_raw) if isinstance(tags_raw, list) else []
+
+            photographer = str(img.get("photographer", "")).strip()
+            source = str(img.get("source", "")).strip()
+            if photographer and source:
+                description = f"Photo by {photographer} ({source})"
+            elif photographer:
+                description = f"Photo by {photographer}"
+            else:
+                description = tags_raw if isinstance(tags_raw, str) else ""
+
+            url = str(img.get("image_url") or img.get("preview_url") or "")
+            return ImageItem(description=description, tags=tags, url=url)
+
+        tags_raw = img.get("tags", [])
+        if isinstance(tags_raw, str):
+            tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+        else:
+            tags = list(tags_raw) if isinstance(tags_raw, list) else []
+
+        return ImageItem(
+            description=str(img.get("description", "")),
+            tags=tags,
+            url=str(img.get("url", "")),
+        )
 
     def _write_output(self, output_path: Path, result: SelectorResult) -> None:
         """Step 4: Write the selection results to a JSON file."""
