@@ -7,6 +7,7 @@ Usage:
     python main.py json-transform --input-dir "./my-data-folder"
     python main.py image-select --input "./slides.json"
     python main.py image-mask --url "https://example.com/photo.jpg"
+    python main.py image-mask --folder "./my-images"
     python main.py reference-research --theme "top coldest countries"
     python main.py stock-image-search --input "./slides_input.json"
 """
@@ -203,13 +204,15 @@ def run_image_mask(args: argparse.Namespace) -> None:
     from core.ui.terminal_select import TerminalSelectCancelled
 
     from agents.image_masker.agent import ImageMaskerAgent
-    from agents.image_masker.models import MaskerConfig
+    from agents.image_masker.models import MaskerBatchResult, MaskerConfig, MaskerResult
 
     output_path = Path(args.output).resolve() if args.output else None
+    input_dir = Path(args.folder).resolve() if args.folder else None
 
     agent = ImageMaskerAgent(output_dir=OUTPUT_DIR)
     config = MaskerConfig(
         image_url=args.url,
+        input_dir=input_dir,
         output_path=output_path,
     )
 
@@ -218,11 +221,27 @@ def run_image_mask(args: argparse.Namespace) -> None:
     except TerminalSelectCancelled:
         print("\nCancelled.", file=sys.stderr)
         sys.exit(1)
+    except ValueError as e:
+        print(f"\n❌ {e}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
         logging.getLogger(__name__).error(f"Image mask failed: {e}", exc_info=True)
         print(f"\n❌ Image mask failed: {e}", file=sys.stderr)
         sys.exit(1)
 
+    if isinstance(result, MaskerBatchResult):
+        print(f"\n🎉 Saved {len(result.results)} masked image(s).")
+        print(f"📁 Input: {result.input_dir}")
+        if result.applied_strategies:
+            names = ", ".join(s.value for s in result.applied_strategies)
+            print(f"🧩 Applied: {names}")
+        else:
+            print("🧩 No strategies selected — saved PNG copies of the RGB images.")
+        for item in result.results:
+            print(f"  • {Path(item.source).name} → {item.output_path}")
+        return
+
+    assert isinstance(result, MaskerResult)
     print(f"\n🎉 Saved masked image.")
     print(f"📄 Output: {result.output_path}")
     if result.applied_strategies:
@@ -373,20 +392,31 @@ def build_parser() -> argparse.ArgumentParser:
         "image-mask",
         help="Apply masking transforms to an image to differentiate it from the original.",
         description=(
-            "Downloads an image from a URL, presents an interactive terminal \n"
-            "multi-select for choosing masking strategies (flip, color shift, \n"
-            "zoom, rotation, noise, etc.), applies them, and saves the result."
+            "Downloads an image from a URL or masks every supported image in a folder, "
+            "presents an interactive terminal multi-select for choosing masking strategies "
+            "(flip, color shift, zoom, rotation, noise, etc.), applies them, and saves "
+            "the result(s)."
         ),
     )
-    image_mask_parser.add_argument(
+    image_mask_source = image_mask_parser.add_mutually_exclusive_group(required=True)
+    image_mask_source.add_argument(
         "--url",
-        required=True,
+        default=None,
         help="URL of the source image to mask.",
+    )
+    image_mask_source.add_argument(
+        "--folder",
+        metavar="PATH",
+        default=None,
+        help="Folder containing local images to mask in batch.",
     )
     image_mask_parser.add_argument(
         "--output",
         default=None,
-        help="Output image path (auto-derived from URL if omitted).",
+        help=(
+            "Output image path for --url, or output directory for --folder "
+            "(defaults to output/)."
+        ),
     )
     image_mask_parser.set_defaults(func=run_image_mask)
 

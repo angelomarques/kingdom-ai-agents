@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+SUPPORTED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"})
+
 
 class MaskStrategy(str, Enum):
     """Available image transforms for content differentiation."""
@@ -36,14 +38,30 @@ _STRATEGY_LABELS: dict[MaskStrategy, str] = {
 
 @dataclass
 class MaskerConfig:
-    image_url: str
+    image_url: str | None = None
+    input_dir: Path | None = None
     output_path: Path | None = None
     # None => interactive terminal picker; set to a list to skip UI (order preserved).
     strategies: list[MaskStrategy] | None = None
+
+    def __post_init__(self) -> None:
+        has_url = self.image_url is not None
+        has_dir = self.input_dir is not None
+        if has_url == has_dir:
+            raise ValueError("Exactly one of image_url or input_dir must be set.")
+        if self.input_dir is not None and not self.input_dir.is_dir():
+            raise ValueError(f"Input directory does not exist: {self.input_dir}")
 
 
 @dataclass
 class MaskerResult:
     output_path: Path
     applied_strategies: list[MaskStrategy]
-    original_url: str
+    source: str
+
+
+@dataclass
+class MaskerBatchResult:
+    results: list[MaskerResult]
+    applied_strategies: list[MaskStrategy]
+    input_dir: Path

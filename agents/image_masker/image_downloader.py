@@ -1,7 +1,8 @@
-"""Download a remote image into a Pillow Image (httpx, same pattern as image_selector)."""
+"""Load images from URLs or local paths into Pillow Images."""
 
 import io
 import logging
+from pathlib import Path
 
 import httpx
 from PIL import Image
@@ -28,3 +29,10 @@ def fetch_image_from_url(url: str, timeout: float = 30.0) -> Image.Image:
         response.raise_for_status()
     img = Image.open(io.BytesIO(response.content))
     return img.copy()
+
+
+def load_image_from_path(path: Path) -> Image.Image:
+    """Open a local image file; returns a loaded copy (caller owns)."""
+    logger.debug("Loading image: %s", path)
+    with Image.open(path) as img:
+        return img.copy()
