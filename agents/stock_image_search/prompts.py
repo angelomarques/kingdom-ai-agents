@@ -21,21 +21,34 @@ Examples of good keyword output:
 """
 
 
-def build_keyword_prompt(theme: str, title: str, content_text: str) -> str:
+def build_keyword_prompt(
+    theme: str,
+    title: str,
+    content_text: str,
+    keyword_instructions: str | None = None,
+) -> str:
     """Build the user prompt for keyword generation.
 
     Args:
         theme: The overall video theme (e.g. "Top 10 Coldest Countries").
         title: Slide headline.
         content_text: Slide body (location, facts, etc.).
+        keyword_instructions: Optional extra guidance for keyword generation.
 
     Returns:
         The formatted user prompt string.
     """
+    extra_instructions = ""
+    if keyword_instructions:
+        extra_instructions = f"""
+Additional keyword instructions:
+{keyword_instructions}
+"""
+
     return f"""Video theme: "{theme}"
 Slide title: "{title}"
 Slide content: "{content_text}"
-
+{extra_instructions}
 Generate 3 to 5 comma-separated English keywords optimized for stock photo search APIs.
 The keywords should help find a visually compelling photo that represents this slide within the context of the overall theme.
 

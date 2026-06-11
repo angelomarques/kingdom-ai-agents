@@ -25,6 +25,7 @@ class StockImageSearchConfig:
     slides: tuple[SlideInput, ...]
     input_path: Path
     output_path: Path | None = None
+    keyword_instructions: str | None = None
 
     @classmethod
     def from_json(cls, path: Path, output_path: Path | None = None) -> StockImageSearchConfig:
@@ -33,6 +34,7 @@ class StockImageSearchConfig:
         Expected JSON format:
         {
             "theme": "Top 10 Coldest Countries",
+            "keyword_instructions": "Prefer aerial cityscape photos over portraits.",
             "slides": [
                 {
                     "title": "Antarctica",
@@ -77,11 +79,19 @@ class StockImageSearchConfig:
 
         slides = tuple(slides_list)
 
+        raw_keyword_instructions = data.get("keyword_instructions")
+        keyword_instructions: str | None = None
+        if raw_keyword_instructions is not None:
+            if not isinstance(raw_keyword_instructions, str):
+                raise ValueError("'keyword_instructions' must be a string when provided.")
+            keyword_instructions = raw_keyword_instructions.strip() or None
+
         return cls(
             theme=theme,
             slides=slides,
             input_path=resolved,
             output_path=output_path,
+            keyword_instructions=keyword_instructions,
         )
 
     def derive_output_basename(self) -> str:

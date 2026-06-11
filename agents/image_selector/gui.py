@@ -8,6 +8,7 @@ from tkinter import font as tkfont
 from PIL import Image, ImageTk
 
 from agents.image_selector.models import ImageItem, ImageSelection, Slide
+from agents.image_selector.preselection import tag_matches_slide_title
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,12 @@ _TEXT = "#eaeaea"
 _TEXT_DIM = "#8d99ae"
 _TEXT_TAG = "#a3bffa"
 _BORDER_SELECTED = "#e94560"
+_BORDER_SUGGESTED = "#a855f7"
 _BORDER_DEFAULT = "#2b3a55"
+_BG_SUGGESTED = "#1e1b4b"
+_TEXT_SUGGESTED = "#c084fc"
+_TAG_MATCH_BG = "#facc15"
+_TAG_MATCH_FG = "#1a1a2e"
 _BTN_SKIP_BG = "#2b3a55"
 _BTN_SKIP_FG = "#8d99ae"
 _PROGRESS_BG = "#2b3a55"
@@ -48,17 +54,21 @@ class ImageSelectorGUI:
         self,
         slides: list[Slide],
         image_paths: dict[str, Path | None],
+        suggestions: list[int | None] | None = None,
     ):
         """Initialize the GUI.
 
         Args:
             slides: List of Slide objects to present.
             image_paths: Mapping of image URL -> local file path (or None).
+            suggestions: Optional per-slide suggested image index (tag match).
         """
         self._slides = slides
         self._image_paths = image_paths
+        self._suggestions = suggestions or [None] * len(slides)
         self._current_index = 0
         self._selected_image_index: int | None = None
+        self._suggested_index: int | None = None
 
         # History stack for go-back support: list of (action, slide_index)
         # action is "select" or "skip"
@@ -87,12 +97,14 @@ class ImageSelectorGUI:
         self._root.geometry(f"+{x}+{y}")
 
         self._root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._root.bind("<Return>", self._on_confirm_suggestion)
 
         # Fonts
         self._font_title = tkfont.Font(family="Helvetica", size=20, weight="bold")
         self._font_desc = tkfont.Font(family="Helvetica", size=12)
         self._font_img_desc = tkfont.Font(family="Helvetica", size=10)
         self._font_tag = tkfont.Font(family="Helvetica", size=9)
+        self._font_suggested = tkfont.Font(family="Helvetica", size=9, weight="bold")
         self._font_btn = tkfont.Font(family="Helvetica", size=12, weight="bold")
         self._font_progress = tkfont.Font(family="Helvetica", size=10)
 
@@ -199,6 +211,11 @@ class ImageSelectorGUI:
 
         slide = self._slides[self._current_index]
         self._selected_image_index = None
+        self._suggested_index = (
+            self._suggestions[self._current_index]
+            if self._current_index < len(self._suggestions)
+            else None
+        )
         self._tk_images.clear()
 
         # Update header
@@ -232,6 +249,10 @@ class ImageSelectorGUI:
 
     def _render_image_card(self, idx: int, image_item: ImageItem) -> None:
         """Render a single image card in the grid."""
+        is_suggested = self._suggested_index == idx
+        card_bg = _BG_SUGGESTED if is_suggested else _BG_CARD
+        border_color = _BORDER_SUGGESTED if is_suggested else _BORDER_DEFAULT
+
         # Determine grid position (3 columns)
         cols = 3
         row = idx // cols
@@ -239,8 +260,8 @@ class ImageSelectorGUI:
 
         # Card frame
         card = tk.Frame(
-            self._grid_frame, bg=_BG_CARD, cursor="hand2",
-            highlightbackground=_BORDER_DEFAULT, highlightthickness=2,
+            self._grid_frame, bg=card_bg, cursor="hand2",
+            highlightbackground=border_color, highlightthickness=2,
             padx=8, pady=8,
         )
         card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
@@ -253,52 +274,104 @@ class ImageSelectorGUI:
         tk_img = self._load_thumbnail(local_path)
         self._tk_images.append(tk_img)
 
-        img_label = tk.Label(card, image=tk_img, bg=_BG_CARD, cursor="hand2")
+        img_label = tk.Label(card, image=tk_img, bg=card_bg, cursor="hand2")
         img_label.pack(pady=(4, 6))
 
         # Image description
         desc_label = tk.Label(
             card, text=image_item.description, font=self._font_img_desc,
-            bg=_BG_CARD, fg=_TEXT, wraplength=200, justify="center",
+            bg=card_bg, fg=_TEXT, wraplength=200, justify="center",
         )
         desc_label.pack(pady=(0, 4))
 
         # Tags
+        tags_frame = None
+        tag_labels: list[tk.Label] = []
+        slide = self._slides[self._current_index]
         if image_item.tags:
-            tags_text = " · ".join(f"#{t}" for t in image_item.tags[:5])
-            tags_label = tk.Label(
-                card, text=tags_text, font=self._font_tag,
-                bg=_BG_CARD, fg=_TEXT_TAG, wraplength=200, justify="center",
+            tags_frame = tk.Frame(card, bg=card_bg)
+            tags_row = tk.Frame(tags_frame, bg=card_bg)
+            tags_row.pack()
+
+            for tag in image_item.tags[:5]:
+                is_match = tag_matches_slide_title(slide.title, tag)
+                tag_bg = _TAG_MATCH_BG if is_match else card_bg
+                tag_fg = _TAG_MATCH_FG if is_match else _TEXT_TAG
+                tag_label = tk.Label(
+                    tags_row,
+                    text=f"#{tag}",
+                    font=self._font_tag,
+                    bg=tag_bg,
+                    fg=tag_fg,
+                    padx=2,
+                    pady=1,
+                )
+                tag_label._tag_match = is_match  # type: ignore[attr-defined]
+                tag_label.pack(side=tk.LEFT, padx=(0, 3))
+                tag_labels.append(tag_label)
+
+            tags_frame.pack(pady=(0, 4))
+
+        if is_suggested:
+            suggested_label = tk.Label(
+                card, text="Suggested", font=self._font_suggested,
+                bg=card_bg, fg=_TEXT_SUGGESTED, justify="center",
             )
-            tags_label.pack(pady=(0, 4))
+            suggested_label.pack(pady=(0, 4))
 
         # Store reference
         self._image_cards.append(card)
 
         # Bind click events to the card and all children
-        for widget in [card, img_label, desc_label]:
+        clickable_widgets = [card, img_label, desc_label]
+        clickable_widgets.extend(tag_labels)
+        if tags_frame is not None:
+            clickable_widgets.append(tags_frame)
+        if is_suggested:
+            clickable_widgets.append(suggested_label)
+        for widget in clickable_widgets:
             widget.bind("<Button-1>", lambda e, i=idx: self._on_image_click(i))
 
         # Hover effects
-        def on_enter(e, c=card, i=idx):
-            if self._selected_image_index != i:
-                c.configure(bg=_BG_CARD_HOVER)
-                for child in c.winfo_children():
-                    try:
-                        child.configure(bg=_BG_CARD_HOVER)
-                    except tk.TclError:
-                        pass
+        def _apply_card_bg(c: tk.Frame, bg: str) -> None:
+            c.configure(bg=bg)
+            for child in c.winfo_children():
+                if child is tags_frame and tags_frame is not None:
+                    tags_frame.configure(bg=bg)
+                    for tag_row in tags_frame.winfo_children():
+                        tag_row.configure(bg=bg)
+                        for tag_label in tag_row.winfo_children():
+                            if tag_label in tag_labels:
+                                label_bg = (
+                                    _TAG_MATCH_BG
+                                    if tag_label._tag_match  # type: ignore[attr-defined]
+                                    else bg
+                                )
+                                label_fg = (
+                                    _TAG_MATCH_FG
+                                    if tag_label._tag_match  # type: ignore[attr-defined]
+                                    else _TEXT_TAG
+                                )
+                                tag_label.configure(bg=label_bg, fg=label_fg)
+                    continue
+                try:
+                    child.configure(bg=bg)
+                except tk.TclError:
+                    pass
 
-        def on_leave(e, c=card, i=idx):
-            if self._selected_image_index != i:
-                c.configure(bg=_BG_CARD)
-                for child in c.winfo_children():
-                    try:
-                        child.configure(bg=_BG_CARD)
-                    except tk.TclError:
-                        pass
+        def on_enter(e, c=card, i=idx, suggested=is_suggested):
+            if self._selected_image_index == i:
+                return
+            hover_bg = _BG_SUGGESTED if suggested else _BG_CARD_HOVER
+            _apply_card_bg(c, hover_bg)
 
-        for widget in [card, img_label, desc_label]:
+        def on_leave(e, c=card, i=idx, suggested=is_suggested):
+            if self._selected_image_index == i:
+                return
+            base_bg = _BG_SUGGESTED if suggested else _BG_CARD
+            _apply_card_bg(c, base_bg)
+
+        for widget in clickable_widgets:
             widget.bind("<Enter>", on_enter)
             widget.bind("<Leave>", on_leave)
 
@@ -341,6 +414,12 @@ class ImageSelectorGUI:
     # ──────────────────────────────────────────
     # Event handlers
     # ──────────────────────────────────────────
+
+    def _on_confirm_suggestion(self, event: tk.Event | None = None) -> None:
+        """Confirm the suggested image with Enter when one exists."""
+        if self._suggested_index is None:
+            return
+        self._on_image_click(self._suggested_index)
 
     def _on_image_click(self, idx: int) -> None:
         """Handle clicking on an image card — immediately selects and advances."""

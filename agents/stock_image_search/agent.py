@@ -93,7 +93,10 @@ class StockImageSearchAgent:
 
             request = LLMRequest(
                 prompt=build_keyword_prompt(
-                    config.theme, slide.title, slide.content_text
+                    config.theme,
+                    slide.title,
+                    slide.content_text,
+                    config.keyword_instructions,
                 ),
                 system_instruction=SYSTEM_INSTRUCTION,
                 temperature=0.7,

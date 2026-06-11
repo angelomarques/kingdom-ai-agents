@@ -2,11 +2,11 @@
 
 import json
 import logging
-from dataclasses import asdict
 from pathlib import Path
 
 from agents.image_selector.image_downloader import download_all_images
 from agents.image_selector.gui import ImageSelectorGUI
+from agents.image_selector.preselection import score_image, suggest_image_index
 from agents.image_selector.models import (
     ImageItem,
     ImageSelection,
@@ -75,10 +75,25 @@ class ImageSelectorAgent:
         logger.info(f"   {len(all_urls)} unique images to download")
         image_paths = download_all_images(all_urls, self._cache_dir)
 
+        # Step 2b: Compute tag-based image suggestions
+        logger.info("\n🔍 Step 2b: Computing image suggestions...")
+        suggestions: list[int | None] = []
+        for i, slide in enumerate(slides):
+            suggested_idx = suggest_image_index(slide)
+            suggestions.append(suggested_idx)
+            if suggested_idx is not None:
+                score = score_image(slide, slide.images[suggested_idx])
+                logger.info(
+                    f"   Slide {i + 1}: suggested image {suggested_idx + 1} "
+                    f"(score {score:.2f})"
+                )
+            else:
+                logger.info(f"   Slide {i + 1}: no suggestion")
+
         # Step 3: Launch GUI
         logger.info("\n🖼️  Step 3: Launching image selector GUI...")
         logger.info("   (Close the window or complete all slides to continue)")
-        gui = ImageSelectorGUI(slides, image_paths)
+        gui = ImageSelectorGUI(slides, image_paths, suggestions=suggestions)
         gui.run()  # Blocks until done
 
         # Step 4: Write output
